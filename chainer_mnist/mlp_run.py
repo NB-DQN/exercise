@@ -4,6 +4,7 @@ reference:
 	http://xiaoxia.exblog.jp/21402064
 	http://qiita.com/kenmatsu4/items/7b8d24d4c5144a686412
 '''
+import argparse
 
 import numpy as np
 import six
@@ -16,6 +17,12 @@ from chainer import optimizers
 
 import os
 from sklearn.datasets import fetch_mldata
+
+parser = argparse.ArgumentParser(description='Chainer example: MNIST')
+parser.add_argument('--gpu', '-g', default=-1, type=int,
+                    help='GPU ID (negative value indicates CPU)')
+args = parser.parse_args()
+print('GPU: ', args.gpu)
 
 batchsize = 100
 n_epoch = 20
@@ -36,7 +43,11 @@ N_test = y_test.size
 model = chainer.FunctionSet(l1=F.Linear(784, n_units),
                             l2=F.Linear(n_units, n_units),
                             l3=F.Linear(n_units, 10))
-                            
+
+if args.gpu >= 0:
+    cuda.init(args.gpu)
+    model.to_gpu()
+                                
 def forward(x_data, y_data, train=True):
     x, t = chainer.Variable(x_data), chainer.Variable(y_data)
     h1 = F.dropout(F.relu(model.l1(x)),  train=train)
@@ -59,7 +70,10 @@ for epoch in six.moves.range(1, n_epoch + 1):
     for i in six.moves.range(0, N, batchsize):
         x_batch = x_train[perm[i:i + batchsize]]
         y_batch = y_train[perm[i:i + batchsize]]
-
+        if args.gpu >= 0:
+            x_batch = cuda.to_gpu(x_batch)
+            y_batch = cuda.to_gpu(y_batch)
+            
         optimizer.zero_grads()
         loss, acc = forward(x_batch, y_batch)
         loss.backward()
@@ -73,9 +87,13 @@ for epoch in six.moves.range(1, n_epoch + 1):
                                                 remove_split=True)
                 o.write(g.dump())
             print('graph generated')
-
-        sum_loss += float(loss.data) * len(y_batch)
-        sum_accuracy += float(acc.data) * len(y_batch)
+        
+        if args.gpu >= 0:
+            sum_loss += float(cuda.to_cpu(loss.data)) * len(y_batch)
+            sum_accuracy += float(cuda.to_cpu(acc.data)) * len(y_batch)    
+        else:
+            sum_loss += float(loss.data) * len(y_batch)
+            sum_accuracy += float(acc.data) * len(y_batch)
 
     print('train mean loss={}, accuracy={}'.format(
         sum_loss / N, sum_accuracy / N))
@@ -86,11 +104,18 @@ for epoch in six.moves.range(1, n_epoch + 1):
     for i in six.moves.range(0, N_test, batchsize):
         x_batch = x_test[i:i + batchsize]
         y_batch = y_test[i:i + batchsize]
-
+        if args.gpu >= 0:
+            x_batch = cuda.to_gpu(x_batch)
+            y_batch = cuda.to_gpu(y_batch)
+            
         loss, acc = forward(x_batch, y_batch, train=False)
-
-        sum_loss += float(loss.data) * len(y_batch)
-        sum_accuracy += float(acc.data) * len(y_batch)
+        
+        if args.gpu >= 0:
+            sum_loss += float(cuda.to_cpu(loss.data)) * len(y_batch)
+            sum_accuracy += float(cuda.to_cpu(acc.data)) * len(y_batch)
+        else:
+            sum_loss += float(loss.data) * len(y_batch)
+            sum_accuracy += float(acc.data) * len(y_batch)
 
     print('test  mean loss={}, accuracy={}'.format(
         sum_loss / N_test, sum_accuracy / N_test))
