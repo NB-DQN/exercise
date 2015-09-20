@@ -33,7 +33,10 @@ n_units = 1000
 
 # Prepare dataset
 print('load MNIST dataset')
-mnist = data.load_mnist_data()
+# mnist = data.load_mnist_data()
+with open('mnist.pkl', 'rb') as mnist_pickle:
+    mnist = six.moves.cPickle.load(mnist_pickle)
+print('finished pickle load')    
 mnist['data'] = mnist['data'].astype(np.float32)
 mnist['data'] /= 255
 mnist['target'] = mnist['target'].astype(np.int32)
