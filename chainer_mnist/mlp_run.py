@@ -36,19 +36,27 @@ mnist['data'] = mnist['data'].astype(np.float32)
 mnist['data'] /= 255
 mnist['target'] = mnist['target'].astype(np.int32)
 
+print('finished loading')
+
 N = 60000
 x_train, x_test = np.split(mnist['data'],   [N])
 y_train, y_test = np.split(mnist['target'], [N])
 N_test = y_test.size
 
+print('finished data allocation')
+
 # Prepare multi-layer perceptron model
 model = chainer.FunctionSet(l1=F.Linear(784, n_units),
                             l2=F.Linear(n_units, n_units),
                             l3=F.Linear(n_units, 10))
+
+print('finished model framewrok geration')
+                            
 if args.gpu >= 0:
     cuda.get_device(args.gpu).use()
     model.to_gpu()
 
+print('finished GPU preparation')
 
 def forward(x_data, y_data, train=True):
     # Neural net architecture
@@ -63,6 +71,8 @@ def forward(x_data, y_data, train=True):
 optimizer = optimizers.Adam()
 optimizer.setup(model)
 
+print('finished optimizer')
+
 # Learning loop
 for epoch in six.moves.range(1, n_epoch + 1):
     print('epoch', epoch)
@@ -74,11 +84,13 @@ for epoch in six.moves.range(1, n_epoch + 1):
     for i in six.moves.range(0, N, batchsize):
         x_batch = xp.asarray(x_train[perm[i:i + batchsize]])
         y_batch = xp.asarray(y_train[perm[i:i + batchsize]])
+        print('finished data allocation for training')
 
         optimizer.zero_grads()
         loss, acc = forward(x_batch, y_batch)
         loss.backward()
         optimizer.update()
+        print('finished BP')
 
         if epoch == 1 and i == 0:
             with open("graph.dot", "w") as o:
