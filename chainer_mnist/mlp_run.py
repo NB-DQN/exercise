@@ -1,9 +1,8 @@
-'''
-reference:
-	http://www.slideshare.net/beam2d/introduction-to-chainer-a-flexible-framework-for-deep-learning
-	http://xiaoxia.exblog.jp/21402064
-	http://qiita.com/kenmatsu4/items/7b8d24d4c5144a686412
-'''
+#!/usr/bin/env python
+"""Chainer example: train a multi-layer perceptron on MNIST
+This is a minimal example to write a feed-forward net. It requires scikit-learn
+to load MNIST dataset.
+"""
 import argparse
 
 import numpy as np
@@ -15,49 +14,54 @@ from chainer import cuda
 import chainer.functions as F
 from chainer import optimizers
 
-import os
-from sklearn.datasets import fetch_mldata
+import data
+
 
 parser = argparse.ArgumentParser(description='Chainer example: MNIST')
 parser.add_argument('--gpu', '-g', default=-1, type=int,
                     help='GPU ID (negative value indicates CPU)')
 args = parser.parse_args()
-print('GPU: ', args.gpu)
+if args.gpu >= 0:
+    cuda.check_cuda_available()
+xp = cuda.cupy if args.gpu >= 0 else np
 
 batchsize = 100
 n_epoch = 20
 n_units = 1000
-N = 60000
 
-# dataset
-mnist = fetch_mldata('MNIST original')
-mnist.data   = mnist.data.astype(np.float32)
-mnist.data  /= 255
-mnist.target = mnist.target.astype(np.int32)
-x_train, x_test = np.split(mnist.data,   [60000])
-y_train, y_test = np.split(mnist.target, [60000])
+# Prepare dataset
+print('load MNIST dataset')
+mnist = data.load_mnist_data()
+mnist['data'] = mnist['data'].astype(np.float32)
+mnist['data'] /= 255
+mnist['target'] = mnist['target'].astype(np.int32)
+
+N = 60000
+x_train, x_test = np.split(mnist['data'],   [N])
+y_train, y_test = np.split(mnist['target'], [N])
 N_test = y_test.size
 
-
-# model
+# Prepare multi-layer perceptron model
 model = chainer.FunctionSet(l1=F.Linear(784, n_units),
                             l2=F.Linear(n_units, n_units),
                             l3=F.Linear(n_units, 10))
-
 if args.gpu >= 0:
-    cuda.init(args.gpu)
+    cuda.get_device(args.gpu).use()
     model.to_gpu()
-                                
+
+
 def forward(x_data, y_data, train=True):
+    # Neural net architecture
     x, t = chainer.Variable(x_data), chainer.Variable(y_data)
     h1 = F.dropout(F.relu(model.l1(x)),  train=train)
     h2 = F.dropout(F.relu(model.l2(h1)), train=train)
     y = model.l3(h2)
     return F.softmax_cross_entropy(y, t), F.accuracy(y, t)
 
-# optimizer
+
+# Setup optimizer
 optimizer = optimizers.Adam()
-optimizer.setup(model.collect_parameters())
+optimizer.setup(model)
 
 # Learning loop
 for epoch in six.moves.range(1, n_epoch + 1):
@@ -68,12 +72,9 @@ for epoch in six.moves.range(1, n_epoch + 1):
     sum_accuracy = 0
     sum_loss = 0
     for i in six.moves.range(0, N, batchsize):
-        x_batch = x_train[perm[i:i + batchsize]]
-        y_batch = y_train[perm[i:i + batchsize]]
-        if args.gpu >= 0:
-            x_batch = cuda.to_gpu(x_batch)
-            y_batch = cuda.to_gpu(y_batch)
-            
+        x_batch = xp.asarray(x_train[perm[i:i + batchsize]])
+        y_batch = xp.asarray(y_train[perm[i:i + batchsize]])
+
         optimizer.zero_grads()
         loss, acc = forward(x_batch, y_batch)
         loss.backward()
@@ -87,13 +88,9 @@ for epoch in six.moves.range(1, n_epoch + 1):
                                                 remove_split=True)
                 o.write(g.dump())
             print('graph generated')
-        
-        if args.gpu >= 0:
-            sum_loss += float(cuda.to_cpu(loss.data)) * len(y_batch)
-            sum_accuracy += float(cuda.to_cpu(acc.data)) * len(y_batch)    
-        else:
-            sum_loss += float(loss.data) * len(y_batch)
-            sum_accuracy += float(acc.data) * len(y_batch)
+
+        sum_loss += float(loss.data) * len(y_batch)
+        sum_accuracy += float(acc.data) * len(y_batch)
 
     print('train mean loss={}, accuracy={}'.format(
         sum_loss / N, sum_accuracy / N))
@@ -102,20 +99,13 @@ for epoch in six.moves.range(1, n_epoch + 1):
     sum_accuracy = 0
     sum_loss = 0
     for i in six.moves.range(0, N_test, batchsize):
-        x_batch = x_test[i:i + batchsize]
-        y_batch = y_test[i:i + batchsize]
-        if args.gpu >= 0:
-            x_batch = cuda.to_gpu(x_batch)
-            y_batch = cuda.to_gpu(y_batch)
-            
+        x_batch = xp.asarray(x_test[i:i + batchsize])
+        y_batch = xp.asarray(y_test[i:i + batchsize])
+
         loss, acc = forward(x_batch, y_batch, train=False)
-        
-        if args.gpu >= 0:
-            sum_loss += float(cuda.to_cpu(loss.data)) * len(y_batch)
-            sum_accuracy += float(cuda.to_cpu(acc.data)) * len(y_batch)
-        else:
-            sum_loss += float(loss.data) * len(y_batch)
-            sum_accuracy += float(acc.data) * len(y_batch)
+
+        sum_loss += float(loss.data) * len(y_batch)
+        sum_accuracy += float(acc.data) * len(y_batch)
 
     print('test  mean loss={}, accuracy={}'.format(
         sum_loss / N_test, sum_accuracy / N_test))
