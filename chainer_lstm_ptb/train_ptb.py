@@ -59,7 +59,6 @@ model = chainer.FunctionSet(embed=F.EmbedID(len(vocab), n_units),
 for param in model.parameters:
     param[:] = np.random.uniform(-0.1, 0.1, param.shape)
 if args.gpu >= 0:
-    cuda.check_cuda_available()
     cuda.get_device(args.gpu).use()
     model.to_gpu()
 
@@ -86,7 +85,7 @@ def make_initial_state(batchsize=batchsize, train=True):
 
 # Setup optimizer
 optimizer = optimizers.SGD(lr=1.)
-optimizer.setup(model)
+optimizer.setup(model.collect_parameters())
 
 
 # Evaluation routine
@@ -119,6 +118,10 @@ for i in six.moves.range(jump * n_epoch):
                         for j in six.moves.range(batchsize)])
     y_batch = xp.array([train_data[(jump * j + i + 1) % whole_len]
                         for j in six.moves.range(batchsize)])
+                        
+    if i == 0:
+        print(y_batch)
+        
     state, loss_i = forward_one_step(x_batch, y_batch, state)
     accum_loss += loss_i
     cur_log_perp += loss_i.data.reshape(())
